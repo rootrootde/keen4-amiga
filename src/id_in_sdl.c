@@ -21,6 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_sd.h"
 #include "id_us.h"
 #include "id_vl.h"
+#ifdef KEEN_AMIGA_RTG
+#include "ck_cross.h"
+#endif
 
 #include <SDL.h>
 #include <string.h>
@@ -33,6 +36,9 @@ SDL_GameController *in_controllers[IN_MAX_JOYSTICKS];
 #endif
 bool in_joystickPresent[IN_MAX_JOYSTICKS];
 bool in_joystickHasHat[IN_MAX_JOYSTICKS];
+#ifdef KEEN_AMIGA_RTG
+static bool in_autoTestInput;
+#endif
 
 // SDLKey -> IN_SC
 #define INL_MapKey(sdl, in_sc) \
@@ -297,6 +303,10 @@ static IN_ScanCode INL_SDLKeySymToScanCode(const SDL_keysym *keySym)
 
 static void IN_SDL_HandleSDLEvent(SDL_Event *event)
 {
+#ifdef KEEN_AMIGA_RTG
+	if (in_autoTestInput && event->type != SDL_QUIT)
+		return;
+#endif
 
 	IN_ScanCode sc;
 	static bool special;
@@ -353,13 +363,24 @@ void IN_SDL_WaitKey()
 	while (SDL_WaitEvent(&event))
 	{
 		IN_SDL_HandleSDLEvent(&event);
+#ifdef KEEN_AMIGA_RTG
+		if (!in_autoTestInput && event.type == SDL_KEYDOWN)
+#else
 		if (event.type == SDL_KEYDOWN)
+#endif
 			break;
 	}
 }
 
 void IN_SDL_Startup(bool disableJoysticks)
 {
+#ifdef KEEN_AMIGA_RTG
+	for (int i = 1; i < us_argc; ++i)
+		if (!CK_Cross_strcasecmp(us_argv[i], "/AUTOTEST"))
+			in_autoTestInput = true;
+	if (in_autoTestInput)
+		return;
+#endif
 	if (!disableJoysticks)
 	{
 		SDL_Init(SDL_INIT_JOYSTICK);
@@ -371,6 +392,10 @@ void IN_SDL_Startup(bool disableJoysticks)
 
 bool IN_SDL_StartJoy(int joystick)
 {
+#ifdef KEEN_AMIGA_RTG
+	if (in_autoTestInput)
+		return false;
+#endif
 	if (joystick > SDL_NumJoysticks())
 		return false;
 
@@ -433,11 +458,23 @@ void IN_SDL_StopJoy(int joystick)
 
 bool IN_SDL_JoyPresent(int joystick)
 {
+#ifdef KEEN_AMIGA_RTG
+	if (in_autoTestInput)
+		return false;
+#endif
 	return in_joystickPresent[joystick];
 }
 
 void IN_SDL_JoyGetAbs(int joystick, int *x, int *y)
 {
+#ifdef KEEN_AMIGA_RTG
+	if (in_autoTestInput)
+	{
+		if (x) *x = 0;
+		if (y) *y = 0;
+		return;
+	}
+#endif
 	int value_x = SDL_JoystickGetAxis(in_joysticks[joystick], 0);
 	int value_y = SDL_JoystickGetAxis(in_joysticks[joystick], 1);
 #if !defined(CK_VANILLA) && SDL_VERSION_ATLEAST(2, 0, 0)
@@ -456,6 +493,13 @@ void IN_SDL_JoyGetAbs(int joystick, int *x, int *y)
 		}
 	}
 #endif
+#ifdef KEEN_AMIGA_RTG
+	// SDL's digital Amiga axes report 257, below the game's deadzone.
+	if (value_x == -257) value_x = -32768;
+	else if (value_x == 257) value_x = 32767;
+	if (value_y == -257) value_y = -32768;
+	else if (value_y == 257) value_y = 32767;
+#endif
 	if (x)
 		*x = value_x;
 	if (y)
@@ -464,6 +508,10 @@ void IN_SDL_JoyGetAbs(int joystick, int *x, int *y)
 
 uint16_t IN_SDL_JoyGetButtons(int joystick)
 {
+#ifdef KEEN_AMIGA_RTG
+	if (in_autoTestInput)
+		return 0;
+#endif
 	uint16_t mask = 0;
 	int i, n = SDL_JoystickNumButtons(in_joysticks[joystick]);
 	if (n > 16)

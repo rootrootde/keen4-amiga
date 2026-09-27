@@ -1,5 +1,15 @@
 SDL2-2.*
 SDL-1.*
+!/third_party/SDL-1.2.16-source.tar.gz
 ._SDL-1.*
 bin*
 obj*
+/.DS_Store
+/CKeen4/
+/build/
+/local/
+/work/
+/test-results/
+/config/amiga.json
+__pycache__/
+*.pyc

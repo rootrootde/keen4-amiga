@@ -27,6 +27,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 void Quit(const char *msg)
 {
+#ifdef KEEN_AMIGA_RTG
+	bool normal = !msg || !*msg;
+#ifdef CK_ENABLE_PLAYLOOP_DUMPER
+	extern FILE *ck_dumperFile;
+	if (ck_dumperFile)
+	{
+		int writeError = ferror(ck_dumperFile);
+		int closeError = fclose(ck_dumperFile);
+		if (writeError || closeError)
+			normal = false;
+		ck_dumperFile = NULL;
+	}
+#endif
+	bool CK_AmigaRunFinish(bool normal);
+	if (!normal && (!msg || !*msg))
+		msg = "Dump close failed";
+#endif
 	// Shutdown VL early to return to text mode.
 	VL_Shutdown();
 	if (!msg || !(*msg))
@@ -45,6 +62,10 @@ void Quit(const char *msg)
 		else
 			CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Thanks for playing Commander Keen!\n");
 		CK_ShutdownID();
+		#ifdef KEEN_AMIGA_RTG
+		if (!CK_AmigaRunFinish(true))
+			exit(1);
+		#endif
 		exit(0);
 	}
 	else
@@ -56,6 +77,9 @@ void Quit(const char *msg)
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Omnispeak", msg, NULL);
 #endif
 #endif
+		#ifdef KEEN_AMIGA_RTG
+		CK_AmigaRunFinish(false);
+		#endif
 		exit(-1);
 	}
 }

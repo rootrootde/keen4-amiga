@@ -1,5 +1,6 @@
 #include "assert.h"
 #include <SDL.h>
+#include <stdlib.h>
 #include <string.h>
 #include "id_vl.h"
 #include "id_vl_private.h"
@@ -13,6 +14,24 @@ static void VL_SDL12_SetVideoMode(int mode)
 {
 	if (mode == 0x0D)
 	{
+#ifdef KEEN_AMIGA_RTG
+		vl_sdl12_screenSurface = SDL_SetVideoMode(320, 200, 8,
+			SDL_SWSURFACE | SDL_FULLSCREEN | SDL_HWPALETTE);
+		if (!vl_sdl12_screenSurface || vl_sdl12_screenSurface->w != 320 ||
+			vl_sdl12_screenSurface->h != 200 ||
+			vl_sdl12_screenSurface->format->BitsPerPixel != 8 ||
+			!(vl_sdl12_screenSurface->flags & SDL_FULLSCREEN) ||
+			!(vl_sdl12_screenSurface->flags & SDL_HWPALETTE))
+		{
+			CK_Cross_LogMessage(CK_LOG_MSG_ERROR, "Cannot set 320x200x8 SDL mode: %s\n", SDL_GetError());
+			exit(1);
+		}
+		vl_sdl12_screenWholeRect.x = 0;
+		vl_sdl12_screenWholeRect.y = 0;
+		vl_sdl12_screenWholeRect.w = 320;
+		vl_sdl12_screenWholeRect.h = 200;
+		vl_sdl12_screenBorderedRect = vl_sdl12_screenWholeRect;
+#else
 		// WARNING - This may be set ONLY before the first call to SDL_SetVideoMode!
 		if ((vl_sdl12_desktopWidth < 0) || (vl_sdl12_desktopHeight < 0))
 		{
@@ -57,6 +76,7 @@ static void VL_SDL12_SetVideoMode(int mode)
 			vl_sdl12_screenBorderedRect.w = VL_EGAVGA_GFX_WIDTH;
 			vl_sdl12_screenBorderedRect.h = VL_EGAVGA_GFX_HEIGHT;
 		}
+#endif
 		SDL_WM_SetCaption(VL_WINDOW_TITLE, VL_WINDOW_TITLE);
 		// Hide mouse cursor
 		SDL_ShowCursor(0);
@@ -79,7 +99,7 @@ static void *VL_SDL12_CreateSurface(int w, int h, VL_SurfaceUsage usage)
 
 static void VL_SDL12_DestroySurface(void *surface)
 {
-	//TODO: Implement
+	SDL_FreeSurface((SDL_Surface *)surface);
 }
 
 static long VL_SDL12_GetSurfaceMemUse(void *surface)
@@ -109,11 +129,15 @@ static void VL_SDL12_RefreshPaletteAndBorderColor(void *screen)
 		sdl12_palette[i].b = VL_EGARGBColorTable[vl_emuegavgaadapter.palette[i]][2];
 	}
 	SDL_SetPalette(surf, SDL_LOGPAL, sdl12_palette, 0, 16);
+#ifdef KEEN_AMIGA_RTG
+	SDL_SetColors(vl_sdl12_screenSurface, sdl12_palette, 0, 16);
+#else
 	SDL_FillRect(vl_sdl12_screenSurface, &vl_sdl12_screenWholeRect,
 		SDL_MapRGB(vl_sdl12_screenSurface->format,
 			VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor][0],
 			VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor][1],
 			VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor][2]));
+#endif
 }
 
 static int VL_SDL12_SurfacePGet(void *surface, int x, int y)
@@ -142,7 +166,7 @@ static void VL_SDL12_SurfaceRect_PM(void *dst_surface, int x, int y, int w, int 
 	for (int py = y; py < y + h; py++)
 		for (int px = x; px < x + w; px++)
 		{
-			uint8_t *p = ((uint8_t *)surf->pixels) + py * surf->w + px;
+			uint8_t *p = ((uint8_t *)surf->pixels) + py * surf->pitch + px;
 			*p &= ~mapmask;
 			*p |= colour;
 		}
@@ -159,7 +183,7 @@ static void VL_SDL12_SurfaceToSurface(void *src_surface, void *dst_surface, int 
 	SDL_LockSurface(dest);
 	for (int _y = sy; _y < sy + sh; ++_y)
 	{
-		memcpy(((uint8_t *)dest->pixels) + (_y - sy + y) * dest->w + x, ((uint8_t *)surf->pixels) + _y * surf->w + sx, sw);
+		memcpy(((uint8_t *)dest->pixels) + (_y - sy + y) * dest->pitch + x, ((uint8_t *)surf->pixels) + _y * surf->pitch + sx, sw);
 	}
 	SDL_UnlockSurface(dest);
 	SDL_UnlockSurface(surf);

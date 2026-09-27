@@ -2288,11 +2288,19 @@ void CK_PlayLoop()
 			bool CK_SaveObject(FS_File fp, CK_object * o);
 			bool CK_SaveGameState(FS_File fp, CK_GameState * state);
 
-			uint32_t timecountToDump = SD_GetTimeCount();
-			FS_WriteInt32LE(&timecountToDump, 1, ck_dumperFile);
-			CK_SaveGameState(ck_dumperFile, &ck_gameState);
+			uint32_t timecountToDump = IN_DemoGetMode() != IN_Demo_Off ?
+				SD_GetAssignedTimeCount() : SD_GetTimeCount();
+			if (FS_WriteInt32LE(&timecountToDump, 1, ck_dumperFile) != 1 ||
+			    !CK_SaveGameState(ck_dumperFile, &ck_gameState))
+				Quit("Dump write failed");
 			for (CK_object *currentObj = &ck_objArray[0]; currentObj != &ck_objArray[CK_MAX_OBJECTS]; ++currentObj)
-				CK_SaveObject(ck_dumperFile, currentObj);
+				if (!CK_SaveObject(ck_dumperFile, currentObj))
+					Quit("Dump write failed");
+#ifdef KEEN_AMIGA_RTG
+			void CK_AmigaRunDemoTick(uint32_t tick);
+			if (IN_DemoGetMode() != IN_Demo_Off)
+				CK_AmigaRunDemoTick(timecountToDump);
+#endif
 		}
 #endif
 
@@ -2330,15 +2338,21 @@ void CK_PlayLoop()
 			{
 				switch (ck_currentEpisode->ep)
 				{
+#ifdef WITH_KEEN4
 				case EP_CK4:
 					ck_mapMiscFlagsCheck = &CK4_MapMiscFlagsCheck;
 					break;
+#endif
+#ifdef WITH_KEEN5
 				case EP_CK5:
 					ck_mapMiscFlagsCheck = &CK5_MapMiscFlagsCheck;
 					break;
+#endif
+#ifdef WITH_KEEN6
 				case EP_CK6:
 					ck_mapMiscFlagsCheck = &CK6_MapMiscFlagsCheck;
 					break;
+#endif
 				default:
 					//TODO: Maybe print a warning here?
 					break;

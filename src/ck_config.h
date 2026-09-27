@@ -68,7 +68,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // Warn on out-of-bounds access to tileinfo.
 #define CK_WARN_ON_TILEINFO_OOB
 // Support the /DUMPFILE option for the playloop dumper
+#ifndef CK_ENABLE_PLAYLOOP_DUMPER
 #define CK_ENABLE_PLAYLOOP_DUMPER
+#endif
 #else
 // Release builds only show warnings and higher
 #define CK_DEFAULT_LOG_LEVEL CK_LOG_MSG_WARNING
@@ -136,7 +138,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 //#define FS_USER_PATH_PREFER_XDG
 
 // Fallback to the XDG paths if the current user path is not writable.
-#ifdef WITH_SDL
+#if defined(WITH_SDL) && !defined(FS_NO_USER_XDG_FALLBACK)
 #define FS_USER_XDG_FALLBACK
 #endif
 

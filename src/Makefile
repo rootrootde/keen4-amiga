@@ -159,6 +159,12 @@ ifeq ($(PLATFORM), gcw0)
         CXXFLAGS += -DO_PATH=010000000
 endif
 
+ifeq ($(PLATFORM), amiga)
+	OUTDIR_SUFFIX := -amiga
+	DEFAULT_RENDERER = sdl1
+	DEFAULT_BUILDASCPP = 0
+endif
+
 ifeq ($(OUTDIR_SUFFIX),INVALID)
 	DUMMY := $(error No valid platform selected)
 endif
@@ -204,6 +210,9 @@ CK4OBJECTS = ck4_map.o ck4_obj1.o ck4_obj2.o ck4_obj3.o ck4_misc.o
 CK5OBJECTS = ck5_map.o ck5_obj1.o ck5_obj2.o ck5_obj3.o ck5_misc.o
 CK6OBJECTS = ck6_map.o ck6_obj1.o ck6_obj2.o ck6_obj3.o ck6_misc.o
 CKOBJECTS = ck_act.o ck_inter.o ck_keen.o ck_obj.o ck_map.o ck_phys.o ck_game.o ck_play.o ck_misc.o ck_main.o ck_text.o ck_cross.o icon.o
+ifeq ($(PLATFORM), amiga)
+	CKOBJECTS += ck_amiga_test.o
+endif
 OPLOBJECTS = opl/dbopl.o opl/nuked_opl3.o
 
 # data files

@@ -29,6 +29,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_def.h"
 #include "ck_game.h"
 #include "ck_play.h"
+#ifdef KEEN_AMIGA_RTG
+#include "ck_amiga_test.h"
+#include <exec/memory.h>
+#include <proto/exec.h>
+#endif
 #ifdef WITH_KEEN4
 #include "ck4_ep.h"
 #endif
@@ -42,6 +47,146 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef KEEN_AMIGA_RTG
+#include <ctype.h>
+#endif
+
+#ifdef KEEN_AMIGA_RTG
+static char amigaRunId[65];
+static char amigaBuildId[65];
+static bool amigaRunActive;
+static bool amigaReplayRequested;
+static bool amigaReplayFinished;
+static uint32_t amigaDemoStartMs;
+static uint32_t amigaDemoElapsedMs;
+static uint32_t amigaDemoFirstTick;
+static uint32_t amigaDemoLastTick;
+static uint32_t amigaDemoFrames;
+static unsigned amigaStressCycles;
+
+void SD_SDL_GetAudioMetrics(bool *opened, uint32_t *callbacks,
+	uint32_t *nonzeroSamples, uint32_t *entered, uint32_t *completed,
+	uint32_t *invalid, uint32_t *sampleRate, uint32_t *channels,
+	uint32_t *bufferSamples);
+
+static bool CK_AmigaRunToken(const char *value)
+{
+	if (!value || !*value || strlen(value) >= sizeof(amigaRunId))
+		return false;
+	for (; *value; ++value)
+		if (!isalnum((unsigned char)*value) && *value != '-' && *value != '_')
+			return false;
+	return true;
+}
+
+static bool CK_AmigaRunRecord(const char *suffix, const char *body)
+{
+	char path[96], temporary[100];
+	snprintf(path, sizeof(path), "RESULT:%s.%s", amigaRunId, suffix);
+	snprintf(temporary, sizeof(temporary), "%s.tmp", path);
+	FILE *file = fopen(temporary, "wb");
+	if (!file)
+		return false;
+	int written = fprintf(file, "run_id=%s\nbuild_id=%s\n%s", amigaRunId, amigaBuildId, body);
+	int closed = fclose(file);
+	if (written < 0 || closed || rename(temporary, path))
+		return false;
+	return true;
+}
+
+static bool CK_AmigaRunStart(int argc, char **argv)
+{
+	const char *runId = NULL, *buildId = NULL;
+	for (int i = 1; i < argc; ++i)
+	{
+		if (!CK_Cross_strcasecmp(argv[i], "/RUNID") && i + 1 < argc)
+			runId = argv[++i];
+		else if (!CK_Cross_strcasecmp(argv[i], "/BUILDID") && i + 1 < argc)
+			buildId = argv[++i];
+	}
+	if (!runId && !buildId)
+		return true;
+	if (!CK_AmigaRunToken(runId) || !CK_AmigaRunToken(buildId))
+		return false;
+	strcpy(amigaRunId, runId);
+	strcpy(amigaBuildId, buildId);
+	amigaRunActive = true;
+	return CK_AmigaRunRecord("start", "state=started\n");
+}
+
+static bool CK_AmigaStressCount(int argc, char **argv)
+{
+	for (int i = 1; i < argc; ++i)
+		if (!CK_Cross_strcasecmp(argv[i], "/STRESS"))
+		{
+			char *end;
+			long count;
+			if (++i == argc)
+				return false;
+			count = strtol(argv[i], &end, 10);
+			if (*end || count < 2 || count > 100 || amigaStressCycles)
+				return false;
+			amigaStressCycles = (unsigned)count;
+		}
+	return true;
+}
+
+void CK_AmigaRunProgress(const char *event)
+{
+	if (!amigaRunActive)
+		return;
+	char path[96];
+	snprintf(path, sizeof(path), "RESULT:%s.progress", amigaRunId);
+	FILE *file = fopen(path, "ab");
+	if (file)
+	{
+		fprintf(file, "run_id=%s build_id=%s event=%s\n",
+		        amigaRunId, amigaBuildId, event);
+		fclose(file);
+	}
+}
+
+void CK_AmigaRunDemoTick(uint32_t tick)
+{
+	if (!amigaDemoFrames)
+		amigaDemoFirstTick = tick;
+	amigaDemoLastTick = tick;
+	++amigaDemoFrames;
+}
+
+bool CK_AmigaRunFinish(bool normal)
+{
+	if (!amigaRunActive)
+		return true;
+	bool pass = normal && (!amigaReplayRequested || amigaReplayFinished);
+	bool audioOpened;
+	uint32_t callbacks, nonzeroSamples;
+	uint32_t callbackEntered, callbackCompleted, callbackInvalid;
+	uint32_t sampleRate, channels, bufferSamples;
+	SD_SDL_GetAudioMetrics(&audioOpened, &callbacks, &nonzeroSamples,
+	                       &callbackEntered, &callbackCompleted, &callbackInvalid,
+	                       &sampleRate, &channels, &bufferSamples);
+	char body[512];
+	snprintf(body, sizeof(body),
+	         "state=finished\nresult=%s\naudio_opened=%u\naudio_callbacks=%lu\n"
+	         "audio_nonzero_samples=%lu\naudio_callback_entered=%lu\n"
+	         "audio_callback_completed=%lu\naudio_invalid_callbacks=%lu\n"
+	         "audio_sample_rate=%lu\naudio_channels=%lu\naudio_buffer_samples=%lu\n"
+	         "audio_audible=unverified\n"
+	         "demo_elapsed_ms=%lu\ndemo_elapsed_ticks=%lu\ndemo_frames=%lu\n",
+	         pass ? "pass" : "fail", audioOpened ? 1u : 0u,
+	         (unsigned long)callbacks, (unsigned long)nonzeroSamples,
+	         (unsigned long)callbackEntered, (unsigned long)callbackCompleted,
+	         (unsigned long)callbackInvalid,
+	         (unsigned long)sampleRate, (unsigned long)channels,
+	         (unsigned long)bufferSamples,
+	         (unsigned long)amigaDemoElapsedMs,
+	         (unsigned long)(amigaDemoLastTick - amigaDemoFirstTick),
+	         (unsigned long)amigaDemoFrames);
+	CK_AmigaRunProgress(pass ? "finished" : "failed");
+	return CK_AmigaRunRecord("result", body) && pass;
+}
+#endif
 
 /*
  * The 'episode' we're playing.
@@ -504,6 +649,19 @@ const char *ck_episodeFile = NULL;
 
 int main(int argc, char *argv[])
 {
+#ifdef KEEN_AMIGA_RTG
+	if (!CK_AmigaRunStart(argc, argv))
+	{
+		fprintf(stderr, "Invalid run identity or start record\n");
+		return 2;
+	}
+	if (!CK_AmigaStressCount(argc, argv))
+	{
+		fprintf(stderr, "Invalid stress count\n");
+		return 2;
+	}
+	CK_AmigaRunProgress("engine_start");
+#endif
 	// Send the cmd-line args to the User Manager.
 	us_argc = argc;
 	us_argv = (const char **)argv;
@@ -654,8 +812,10 @@ int main(int argc, char *argv[])
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 		else if (!CK_Cross_strcasecmp(argv[i], "/DUMPFILE"))
 		{
-			if (i < argc + 1)
+			if (i + 1 < argc)
 				dumperFilename = argv[++i]; // Yes, we increment i twice
+			else
+				Quit("Missing dump file path");
 		}
 #endif
 	}
@@ -726,8 +886,7 @@ int main(int argc, char *argv[])
 		ck_dumperFile = fopen(dumperFilename, "wb");
 		if (ck_dumperFile == NULL)
 		{
-			fprintf(stderr, "Couldn't open dumper file for writing.\n");
-			return 1;
+			Quit("Couldn't open dumper file for writing.");
 		}
 		printf("Writing to dump file %s\n", dumperFilename);
 	}
@@ -756,7 +915,77 @@ int main(int argc, char *argv[])
 			// A bit of stuff from the usual demo loop
 			ck_gameState.levelState = LS_Playing;
 
+			if (i + 1 >= argc || argv[i + 1][0] < '0' || argv[i + 1][0] > '4' || argv[i + 1][1])
+				Quit("Invalid demo number");
+#ifdef KEEN_AMIGA_RTG
+			amigaReplayRequested = true;
+			if (amigaStressCycles && (!amigaRunActive || !dumperFilename))
+				Quit("Stress needs run identity and dump path");
+			unsigned cycles = amigaStressCycles ? amigaStressCycles : 1;
+			for (unsigned cycle = 1; cycle <= cycles; ++cycle)
+			{
+				bool opened;
+				uint32_t callbacksBefore, nonzeroBefore, enteredBefore, completedBefore;
+				uint32_t invalidBefore, sampleRate, channels, bufferSamples;
+				uint32_t callbacksAfter, nonzeroAfter, enteredAfter, completedAfter, invalidAfter;
+				char suffix[16], body[640], savePath[96], reason[96];
+				if (cycle > 1)
+				{
+					char dumpPath[96];
+					snprintf(dumpPath, sizeof(dumpPath), "RESULT:cycle%03u.dump", cycle);
+					ck_dumperFile = fopen(dumpPath, "wb");
+					if (!ck_dumperFile)
+						Quit("Stress dump open failed");
+				}
+				amigaDemoFrames = amigaDemoFirstTick = amigaDemoLastTick = 0;
+				SD_SDL_GetAudioMetrics(&opened, &callbacksBefore, &nonzeroBefore,
+				                       &enteredBefore, &completedBefore, &invalidBefore,
+				                       &sampleRate, &channels, &bufferSamples);
+				ck_gameState.levelState = LS_Playing;
+				amigaDemoStartMs = SDL_GetTicks();
+				CK_AmigaRunProgress("demo_started");
+				CK_PlayDemo(atoi(argv[i + 1]));
+				amigaDemoElapsedMs = SDL_GetTicks() - amigaDemoStartMs;
+				CK_AmigaRunProgress("demo_returned");
+				if (amigaStressCycles)
+				{
+					int dumpError = ferror(ck_dumperFile);
+					int closeError = fclose(ck_dumperFile);
+					ck_dumperFile = NULL;
+					if (dumpError || closeError)
+						Quit("Stress dump close failed");
+					snprintf(savePath, sizeof(savePath), "RESULT:%s.save-%03u", amigaRunId, cycle);
+					if (!CK_AmigaSaveLoadRoundtrip(savePath, reason, sizeof(reason)))
+						QuitF("Stress save/load: %s", reason);
+					SD_SDL_GetAudioMetrics(&opened, &callbacksAfter, &nonzeroAfter,
+					                       &enteredAfter, &completedAfter, &invalidAfter,
+					                       &sampleRate, &channels, &bufferSamples);
+					snprintf(suffix, sizeof(suffix), "cycle%03u", cycle);
+					snprintf(body, sizeof(body),
+					         "state=finished\nresult=pass\ncycle=%u\nframes=%lu\nticks=%lu\n"
+					         "elapsed_ms=%lu\naudio_callbacks_delta=%lu\naudio_nonzero_delta=%lu\n"
+					         "audio_entered_delta=%lu\naudio_completed_delta=%lu\n"
+					         "audio_invalid_delta=%lu\nmm_used_memory=%d\nmm_used_blocks=%d\n"
+					         "mm_purgable_blocks=%d\nvl_mem_used=%d\nvl_num_surfaces=%d\n"
+					         "avail_mem=%lu\nsave_load=pass\n",
+					         cycle, (unsigned long)amigaDemoFrames,
+					         (unsigned long)(amigaDemoLastTick - amigaDemoFirstTick),
+					         (unsigned long)amigaDemoElapsedMs,
+					         (unsigned long)(callbacksAfter - callbacksBefore),
+					         (unsigned long)(nonzeroAfter - nonzeroBefore),
+					         (unsigned long)(enteredAfter - enteredBefore),
+					         (unsigned long)(completedAfter - completedBefore),
+					         (unsigned long)(invalidAfter - invalidBefore),
+					         MM_UsedMemory(), MM_UsedBlocks(), MM_PurgableBlocks(),
+					         VL_MemUsed(), VL_NumSurfaces(), (unsigned long)AvailMem(MEMF_ANY));
+					if (!CK_AmigaRunRecord(suffix, body))
+						Quit("Stress record failed");
+				}
+			}
+			amigaReplayFinished = true;
+#else
 			CK_PlayDemo(atoi(argv[i + 1]));
+#endif
 			Quit(0);
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/ASLEV"))
@@ -776,7 +1005,19 @@ int main(int argc, char *argv[])
 	CK_ShutdownID();
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 	if (ck_dumperFile)
-		fclose(ck_dumperFile);
+	{
+		if (fclose(ck_dumperFile))
+		{
+#ifdef KEEN_AMIGA_RTG
+			CK_AmigaRunFinish(false);
+#endif
+			return 1;
+		}
+		ck_dumperFile = NULL;
+	}
+#endif
+#ifdef KEEN_AMIGA_RTG
+	return CK_AmigaRunFinish(true) ? 0 : 1;
 #endif
 	return 0;
 }

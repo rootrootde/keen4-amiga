@@ -191,6 +191,57 @@ size_t FS_GetFileSize(FS_File file)
 	return GetFileSize(fHandle, NULL);
 }
 
+#elif defined(KEEN_AMIGA_RTG)
+
+#include <errno.h>
+#include <unistd.h>
+
+static bool FSL_AmigaPath(char *result, size_t size, const char *dirPath,
+	const char *fileName)
+{
+	size_t dirLength = strlen(dirPath);
+	const char *separator = "/";
+	if (dirLength == 0 || !strcmp(dirPath, "."))
+		dirPath = separator = "";
+	else if (dirPath[dirLength - 1] == ':' || dirPath[dirLength - 1] == '/')
+		separator = "";
+	int written = snprintf(result, size, "%s%s%s", dirPath, separator, fileName);
+	return written >= 0 && (size_t)written < size;
+}
+
+FS_File FSL_OpenFileInDirCaseInsensitive(const char *dirPath, const char *fileName, bool forWrite)
+{
+	char path[512];
+	if (!FSL_AmigaPath(path, sizeof(path), dirPath, fileName))
+		return 0;
+	FS_File file = fopen(path, forWrite ? "wb" : "rb");
+	if (!file && !strcmp(fileName, "EPISODE.CK4"))
+		CK_Cross_LogMessage(CK_LOG_MSG_ERROR, "Cannot open %s: %s\n", path, strerror(errno));
+	return file;
+}
+
+FS_File FSL_CreateFileInDir(const char *dirPath, const char *fileName)
+{
+	char path[512];
+	if (!FSL_AmigaPath(path, sizeof(path), dirPath, fileName))
+		return 0;
+	return fopen(path, "wb");
+}
+
+bool FSL_IsDirWritable(const char *dirPath)
+{
+	return access(dirPath, W_OK | X_OK) == 0;
+}
+
+size_t FS_GetFileSize(FS_File file)
+{
+	long oldPosition = ftell(file);
+	fseek(file, 0, SEEK_END);
+	long size = ftell(file);
+	fseek(file, oldPosition, SEEK_SET);
+	return size;
+}
+
 #else
 
 #include <dirent.h>

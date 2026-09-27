@@ -1,0 +1,138 @@
+(set @app-name "Keen4")
+(welcome)
+(if (= @user-level 0)
+  (abort "Please restart the installation and choose Intermediate User to select the ZIP and destination."))
+(set #source (pathonly @icon))
+(set #parent
+  (askdir
+    (prompt "Choose the parent drawer. A Keen4 drawer will be created inside it.")
+    (help "Select the writable drawer that will contain Keen4.")
+    (default @default-dest)
+    (newpath)))
+(set #target (tackon #parent "Keen4"))
+(set #archive
+  (askfile
+    (prompt "Choose your Keen 4 version 1.4 EGA ZIP archive")
+    (help "Select the original 4keen14.zip archive.")
+    (default "4keen14.zip")))
+(if (= (exists "C:UnZip" (noreq)) 1)
+  (set #unzip "C:UnZip")
+  (if (= (exists "SYS:Utilities/UnZip" (noreq)) 1)
+    (set #unzip "SYS:Utilities/UnZip")
+    (if (= (exists "SYS:System/UnZip" (noreq)) 1)
+      (set #unzip "SYS:System/UnZip")
+      (set #unzip
+        (askfile
+          (prompt "Choose the UnZip program")
+          (help "Select the installed UnZip executable.")
+          (default "C:UnZip"))))))
+
+(if (<> (exists #archive (noreq)) 1)
+  (abort "The ZIP archive was not found."))
+(if (<> (exists #unzip (noreq)) 1)
+  (abort "The UnZip program was not found."))
+(if (<> (exists #source (noreq)) 2)
+  (abort "The package drawer was not found."))
+(if (= #target #source)
+  (abort "Choose a different installation drawer."))
+
+(set #n 0)
+(while (set #required
+         (select #n "omnispeak" "ACTION.CK4" "AUDINFOE.CK4"
+                 "AUDIODCT.CK4" "AUDIOHHD.CK4" "EGADICT.CK4"
+                 "EGAHEAD.CK4" "EPISODE.CK4" "GFXCHUNK.CK4"
+                 "GFXINFOE.CK4" "MAPHEAD.CK4" "STRINGS.CK4"
+                 "TILEINFO.CK4" "Start-Keen4" "Start-Keen4-NoSound"
+                 "README" "LICENSE" "AUTHORS"
+                 "build.json" "manifest.json" ""))
+  (if (<> (exists (tackon #source #required) (noreq)) 1)
+    (abort (cat "Package file missing: " #required)))
+  (set #n (+ #n 1)))
+(if (<> (exists (tackon #source "Install.info") (noreq)) 1)
+  (abort "Package file missing: Install.info"))
+(if (<> (exists (tackon #source "Start-Keen4.info") (noreq)) 1)
+  (abort "Package file missing: Start-Keen4.info"))
+
+(set #path #archive)
+(set #p 0)
+(while (< #p (strlen #path))
+  (set #char (substr #path #p 1))
+  (if (or (= #char "*") (= #char "\"") (= #char "\\")
+          (= #char "`") (= #char "$") (= #char "\n")
+          (= #char "\r") (= #char ";") (= #char "|")
+          (= #char "<") (= #char ">") (= #char "&"))
+    (abort "The ZIP path contains a Shell control character."))
+  (set #p (+ #p 1)))
+(set #path #unzip)
+(set #p 0)
+(while (< #p (strlen #path))
+  (set #char (substr #path #p 1))
+  (if (or (= #char "*") (= #char "\"") (= #char "\\")
+          (= #char "`") (= #char "$") (= #char "\n")
+          (= #char "\r") (= #char ";") (= #char "|")
+          (= #char "<") (= #char ">") (= #char "&"))
+    (abort "The UnZip path contains a Shell control character."))
+  (set #p (+ #p 1)))
+
+(set #stage "T:Keen4InstallData")
+(if (exists #stage (noreq))
+  (abort "T:Keen4InstallData already exists. Remove it after checking its contents, then retry."))
+
+(if @pretend
+  (exit "Pretend mode: no files were extracted or copied."))
+
+(makedir #stage)
+(if (<> (exists #stage (noreq)) 2)
+  (abort "Could not create T:Keen4InstallData."))
+
+(set #command
+  (cat "\"" #unzip "\" -C -j -o \"" #archive
+       "\" AUDIO.CK4 EGAGRAPH.CK4 GAMEMAPS.CK4 -d \"" #stage "\""))
+(set #unzip-result (run #command))
+(if (or (< #unzip-result 0) (> #unzip-result 1))
+  (abort "UnZip failed. Check the archive and space in T:."))
+
+(if (<> (exists (tackon #stage "AUDIO.CK4") (noreq)) 1)
+  (abort "AUDIO.CK4 is missing from the archive."))
+(if (<> (getsize (tackon #stage "AUDIO.CK4")) 33325)
+  (abort "AUDIO.CK4 has the wrong size for Keen 4 version 1.4 EGA."))
+(if (<> (exists (tackon #stage "EGAGRAPH.CK4") (noreq)) 1)
+  (abort "EGAGRAPH.CK4 is missing from the archive."))
+(if (<> (getsize (tackon #stage "EGAGRAPH.CK4")) 520581)
+  (abort "EGAGRAPH.CK4 has the wrong size for Keen 4 version 1.4 EGA."))
+(if (<> (exists (tackon #stage "GAMEMAPS.CK4") (noreq)) 1)
+  (abort "GAMEMAPS.CK4 is missing from the archive."))
+(if (<> (getsize (tackon #stage "GAMEMAPS.CK4")) 99040)
+  (abort "GAMEMAPS.CK4 has the wrong size for Keen 4 version 1.4 EGA."))
+(if (= #unzip-result 1)
+  (transcript "UnZip returned warning 1; all three staged file sizes match."))
+
+(copyfiles
+  (source #source)
+  (dest #target)
+  (choices "omnispeak" "ACTION.CK4" "AUDINFOE.CK4" "AUDIODCT.CK4"
+           "AUDIOHHD.CK4" "EGADICT.CK4" "EGAHEAD.CK4" "EPISODE.CK4"
+           "GFXCHUNK.CK4" "GFXINFOE.CK4" "MAPHEAD.CK4" "STRINGS.CK4"
+           "TILEINFO.CK4" "Start-Keen4" "Start-Keen4.info"
+           "Start-Keen4-NoSound"
+           "README" "LICENSE" "AUTHORS" "build.json"
+           "manifest.json" "licenses" "upstream"))
+(copyfiles
+  (source #stage)
+  (dest #target)
+  (choices "AUDIO.CK4" "EGAGRAPH.CK4" "GAMEMAPS.CK4"))
+(if (= (exists (tackon #target "README-HARDWARE.txt") (noreq)) 1)
+  (delete (tackon #target "README-HARDWARE.txt")))
+(set #drawer-icon (tackon #parent "Keen4.info"))
+(if (= (exists #drawer-icon (noreq)) 1)
+  (if (and (= (getsize #drawer-icon) 538)
+           (= (getsum #drawer-icon) -2057723225))
+    (delete #drawer-icon)))
+(if (= (exists #drawer-icon (noreq)) 0)
+  (makedir #target (infos)))
+(set @default-dest #target)
+(delete (tackon #stage "AUDIO.CK4"))
+(delete (tackon #stage "EGAGRAPH.CK4"))
+(delete (tackon #stage "GAMEMAPS.CK4"))
+(delete #stage)
+(exit "Keen 4 is installed. Run Execute Start-Keen4 from its drawer.")

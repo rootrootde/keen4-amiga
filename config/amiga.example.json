@@ -1,0 +1,7 @@
+{
+  "amiberry": "/Applications/Amiberry.app/Contents/MacOS/Amiberry",
+  "rom": "/absolute/path/to/kick.rom",
+  "system_base": "/absolute/path/to/system-base",
+  "game_data": "/absolute/path/to/CKeen4",
+  "runs_dir": "/absolute/path/to/keen/local/runs"
+}

@@ -34,6 +34,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef KEEN_AMIGA_RTG
+#include <proto/exec.h>
+#endif
 
 #include "id_cfg.h"
 #include "id_sd.h"
@@ -79,6 +82,35 @@ static uint32_t SD_SDL_BeepHalfCycleCounter, SD_SDL_BeepHalfCycleCounterUpperBou
 // WARNING: These vars refer to the libSDL library!!!
 SDL_AudioSpec SD_SDL_AudioSpec;
 static bool SD_SDL_AudioSubsystem_Up;
+static bool SD_SDL_noSound;
+#ifdef KEEN_AMIGA_RTG
+static bool SD_SDL_audioOpened;
+static uint32_t SD_SDL_audioCallbacks;
+static uint32_t SD_SDL_nonzeroSamples;
+static volatile uint32_t SD_SDL_callbackEntered;
+static volatile uint32_t SD_SDL_callbackCompleted;
+static volatile uint32_t SD_SDL_callbackInvalid;
+
+void SD_SDL_GetAudioMetrics(bool *opened, uint32_t *callbacks,
+	uint32_t *nonzeroSamples, uint32_t *entered, uint32_t *completed,
+	uint32_t *invalid, uint32_t *sampleRate, uint32_t *channels,
+	uint32_t *bufferSamples)
+{
+	if (SD_SDL_AudioSubsystem_Up)
+		SDL_LockAudio();
+	*opened = SD_SDL_audioOpened;
+	*callbacks = SD_SDL_audioCallbacks;
+	*nonzeroSamples = SD_SDL_nonzeroSamples;
+	*entered = SD_SDL_callbackEntered;
+	*completed = SD_SDL_callbackCompleted;
+	*invalid = SD_SDL_callbackInvalid;
+	*sampleRate = SD_SDL_audioOpened ? SD_SDL_AudioSpec.freq : 0;
+	*channels = SD_SDL_audioOpened ? SD_SDL_AudioSpec.channels : 0;
+	*bufferSamples = SD_SDL_audioOpened ? SD_SDL_AudioSpec.samples : 0;
+	if (SD_SDL_AudioSubsystem_Up)
+		SDL_UnlockAudio();
+}
+#endif
 static uint64_t SD_SDL_ScaledSamplesPerPartsTimesPITRate;
 static uint32_t SD_SDL_ScaledSamplesPartNum = 0;
 static uint32_t SD_SDL_SampleOffsetInSound, SD_SDL_SamplesInCurrentPart;
@@ -95,11 +127,20 @@ static uint64_t SD_SDL_nextTickAt = 0;
 static SDL_Thread *SD_SDL_t0Thread = 0;
 
 static SDL_cond *SD_SDL_TimerConditionVar;
+static SDL_mutex *SD_SDL_TimerMutex;
 static bool SD_SDL_WaitTicksSpin = false;
 
 /* NEVER call this from the SDL callback!!! (Or you want a deadlock?) */
 void SD_SDL_SetTimer0(int16_t int_8_divisor)
 {
+#ifdef KEEN_AMIGA_RTG
+	// An old 140 Hz offset can exceed the shorter 560 Hz music part.
+	if (SD_SDL_timerDivisor != int_8_divisor)
+	{
+		SD_SDL_ScaledSamplesPartNum = 0;
+		SD_SDL_SampleOffsetInSound = 0;
+	}
+#endif
 	SD_SDL_ScaledSamplesPerPartsTimesPITRate = int_8_divisor * SD_SDL_AudioSpec.freq;
 	// Since the following division may lead to truncation, SD_SDL_SamplesInCurrentPart
 	// can change during playback by +-1 (otherwise music may be a bit faster than intended).
@@ -280,6 +321,8 @@ static int sd_sdl_bonusSamplesQueued = 0;
 static inline void PCSpeakerUpdateOne(int16_t *stream, int length);
 void SD_SDL_alOut(uint8_t reg, uint8_t val)
 {
+	if (SD_SDL_noSound)
+		return;
 	// FIXME: The original code for alOut adds 6 reads of the register port
 	// after writing to it (3.3 microseconds), and then 35 more reads of
 	// the register port after writing to the data port (23 microseconds).
@@ -347,6 +390,22 @@ void SDL_t0Service(void);
 /* BIG BIG FIXME: This is the VERY wrong place to call the OPL emulator, etc! */
 void SD_SDL_CallBack(void *unused, Uint8 *stream, int len)
 {
+#ifdef KEEN_AMIGA_RTG
+	// SDL's priority 11 audio task starved the main task on AmigaOS.
+	if (++SD_SDL_callbackEntered == 1)
+		SetTaskPri(FindTask(NULL), 0);
+	if (!stream || len <= 0 || (numChannels != 1 && numChannels != 2) ||
+	    len % (2 * numChannels) || !SD_SDL_SamplesInCurrentPart ||
+	    SD_SDL_SampleOffsetInSound >= SD_SDL_SamplesInCurrentPart)
+	{
+		++SD_SDL_callbackInvalid;
+		if (stream && len > 0)
+			memset(stream, 0, len);
+		return;
+	}
+	int16_t *outputSamples = (int16_t *)stream;
+	int outputCount = len / (int)sizeof(int16_t);
+#endif
 	int16_t *currSamplePtr = (int16_t *)stream;
 	uint32_t currNumOfSamples;
 	bool isPartCompleted;
@@ -355,15 +414,32 @@ void SD_SDL_CallBack(void *unused, Uint8 *stream, int len)
 #endif
 	while (len)
 	{
+#ifdef KEEN_AMIGA_RTG
+		if (!SD_SDL_SamplesInCurrentPart ||
+		    SD_SDL_SampleOffsetInSound >= SD_SDL_SamplesInCurrentPart)
+		{
+			++SD_SDL_callbackInvalid;
+			memset(currSamplePtr, 0, len);
+			return;
+		}
+#endif
 		if (!SD_SDL_SampleOffsetInSound && !SD_SDL_useTimerFallback)
 		{
 			SDL_t0Service();
-			if (!SD_SDL_WaitTicksSpin)
+			if (!SD_SDL_WaitTicksSpin && SD_SDL_TimerConditionVar)
 				SDL_CondBroadcast(SD_SDL_TimerConditionVar);
 		}
 		// Now generate sound
 		isPartCompleted = (len >= 2 * numChannels * (SD_SDL_SamplesInCurrentPart - SD_SDL_SampleOffsetInSound));
 		currNumOfSamples = isPartCompleted ? (SD_SDL_SamplesInCurrentPart - SD_SDL_SampleOffsetInSound) : (len / (2 * numChannels));
+#ifdef KEEN_AMIGA_RTG
+		if (!currNumOfSamples)
+		{
+			++SD_SDL_callbackInvalid;
+			memset(currSamplePtr, 0, len);
+			return;
+		}
+#endif
 
 		// AdLib (including hack for alOut delays)
 		if (SD_ALOut_SamplesEnd - SD_ALOut_SamplesStart <= currNumOfSamples)
@@ -400,6 +476,13 @@ void SD_SDL_CallBack(void *unused, Uint8 *stream, int len)
 			SD_SDL_SamplesInCurrentPart = (SD_SDL_ScaledSamplesPartNum + 1) * SD_SDL_ScaledSamplesPerPartsTimesPITRate / PC_PIT_RATE - SD_SDL_ScaledSamplesPartNum * SD_SDL_ScaledSamplesPerPartsTimesPITRate / PC_PIT_RATE;
 		}
 	}
+#ifdef KEEN_AMIGA_RTG
+	++SD_SDL_audioCallbacks;
+	for (int i = 0; i < outputCount; ++i)
+		if (outputSamples[i])
+			++SD_SDL_nonzeroSamples;
+	++SD_SDL_callbackCompleted;
+#endif
 }
 
 int SD_SDL_t0InterruptThread(void *param)
@@ -437,9 +520,11 @@ int SD_SDL_t0InterruptThread(void *param)
 
 		if (currPitTicks >= SD_SDL_nextTickAt)
 		{
-			SDL_LockAudio();
+			if (SD_SDL_AudioSubsystem_Up)
+				SDL_LockAudio();
 			SDL_t0Service();
-			SDL_UnlockAudio();
+			if (SD_SDL_AudioSubsystem_Up)
+				SDL_UnlockAudio();
 			if (!SD_SDL_WaitTicksSpin)
 				SDL_CondBroadcast(SD_SDL_TimerConditionVar);
 			SD_SDL_nextTickAt += SD_SDL_timerDivisor;
@@ -488,6 +573,14 @@ void SD_SDL_PCSpkOn(bool on, int freq)
 
 void SD_SDL_Startup(void)
 {
+#ifdef KEEN_AMIGA_RTG
+	SD_SDL_audioOpened = false;
+	SD_SDL_audioCallbacks = 0;
+	SD_SDL_nonzeroSamples = 0;
+	SD_SDL_callbackEntered = 0;
+	SD_SDL_callbackCompleted = 0;
+	SD_SDL_callbackInvalid = 0;
+#endif
 	const char *oplEmuString = CFG_GetConfigString("oplEmulator", "dbopl");
 	if (!CK_Cross_strcasecmp(oplEmuString, "nukedopl3"))
 		sd_oplEmulator = SD_OPL_EMULATOR_NUKED;
@@ -503,11 +596,15 @@ void SD_SDL_Startup(void)
 
 	for (int i = 0; i < us_argc; ++i)
 	{
+		if (!CK_Cross_strcasecmp(us_argv[i], "/NOSOUND"))
+			SD_SDL_noSound = true;
 		if (!CK_Cross_strcasecmp(us_argv[i], "/AUDIOSYNC"))
 			SD_SDL_useTimerFallback = false;
 		if (!CK_Cross_strcasecmp(us_argv[i], "/NUKEDOPL3"))
 			sd_oplEmulator = SD_OPL_EMULATOR_NUKED;
 	}
+	if (SD_SDL_noSound)
+		SD_SDL_useTimerFallback = true;
 
 	// Check if we should use SDL_QueueAudio
 	sd_sdl_queueAudio = CFG_GetConfigBool("sd_sdl_queueAudio", sd_sdl_queueAudio);
@@ -527,7 +624,10 @@ void SD_SDL_Startup(void)
 	// Setup a condition variable to signal threads waiting for timer updates.
 	SD_SDL_WaitTicksSpin = CFG_GetConfigBool("sd_sdl_waitTicksSpin", false);
 	if (!SD_SDL_WaitTicksSpin)
+	{
 		SD_SDL_TimerConditionVar = SDL_CreateCond();
+		SD_SDL_TimerMutex = SDL_CreateMutex();
+	}
 
 	// Allow us to override the audio driver.
 #if SDL_VERSION_ATLEAST(2,0,0)
@@ -536,7 +636,13 @@ void SD_SDL_Startup(void)
 	SDL_setenv("SDL_AUDIODRIVER", sdlDriver, false);
 #endif
 
-	if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0)
+	if (SD_SDL_noSound)
+	{
+		SD_SDL_AudioSpec.freq = 49716;
+		SD_SDL_AudioSubsystem_Up = false;
+		SD_SDL_SetTimer0(8514);
+	}
+	else if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0)
 	{
 		CK_Cross_LogMessage(CK_LOG_MSG_WARNING, "SDL audio system initialization failed,\n%s\n", SDL_GetError());
 		SD_SDL_AudioSubsystem_Up = false;
@@ -544,9 +650,14 @@ void SD_SDL_Startup(void)
 	}
 	else
 	{
-		SD_SDL_AudioSpec.freq = CFG_GetConfigInt("sampleRate", 49716); // OPL rate
+#ifdef KEEN_AMIGA_RTG
+		const int defaultSampleRate = 22050, defaultChannels = 1;
+#else
+		const int defaultSampleRate = 49716, defaultChannels = 2;
+#endif
+		SD_SDL_AudioSpec.freq = CFG_GetConfigInt("sampleRate", defaultSampleRate);
 		SD_SDL_AudioSpec.format = AUDIO_S16SYS;
-		SD_SDL_AudioSpec.channels = CFG_GetConfigInt("audioChannels", 2);
+		SD_SDL_AudioSpec.channels = CFG_GetConfigInt("audioChannels", defaultChannels);
 		// Under wine, small buffer sizes cause a lot of crackling, so we double the
 		// buffer size. This will result in a tiny amount (~10ms) of extra lag on windows,
 		// but it's a price I'm prepared to pay to not have my ears explode.
@@ -568,6 +679,9 @@ void SD_SDL_Startup(void)
 		else
 		{
 			SD_SDL_AudioSubsystem_Up = true;
+#ifdef KEEN_AMIGA_RTG
+			SD_SDL_audioOpened = true;
+#endif
 			numChannels = SD_SDL_AudioSpec.channels;
 		}
 
@@ -602,17 +716,25 @@ void SD_SDL_Startup(void)
 
 void SD_SDL_Shutdown(void)
 {
+	if (SD_SDL_useTimerFallback)
+	{
+		SD_SDL_useTimerFallback = false;
+		if (SD_SDL_t0Thread)
+			SDL_WaitThread(SD_SDL_t0Thread, NULL);
+		SD_SDL_t0Thread = NULL;
+	}
 	if (SD_SDL_AudioSubsystem_Up)
 	{
 		SDL_CloseAudio();
 		SDL_QuitSubSystem(SDL_INIT_AUDIO);
 		SD_SDL_AudioSubsystem_Up = false;
 	}
-	if (SD_SDL_useTimerFallback)
-	{
-		SD_SDL_useTimerFallback = false;
-		SDL_WaitThread(SD_SDL_t0Thread, NULL);
-	}
+	if (SD_SDL_TimerConditionVar)
+		SDL_DestroyCond(SD_SDL_TimerConditionVar);
+	if (SD_SDL_TimerMutex)
+		SDL_DestroyMutex(SD_SDL_TimerMutex);
+	SD_SDL_TimerConditionVar = NULL;
+	SD_SDL_TimerMutex = NULL;
 }
 
 bool SD_SDL_IsLocked = false;
@@ -637,11 +759,14 @@ void SD_SDL_Unlock()
 
 void SD_SDL_WaitTick()
 {
-	SDL_mutex *mtx = SDL_CreateMutex();
-	SDL_LockMutex(mtx);
-	// Timeout of 2ms, as the PIT rate is ~1.1ms..
-	SDL_CondWaitTimeout(SD_SDL_TimerConditionVar, mtx, 2);
-	SDL_UnlockMutex(mtx);
+	if (!SD_SDL_TimerConditionVar || !SD_SDL_TimerMutex)
+	{
+		SDL_Delay(2);
+		return;
+	}
+	SDL_LockMutex(SD_SDL_TimerMutex);
+	SDL_CondWaitTimeout(SD_SDL_TimerConditionVar, SD_SDL_TimerMutex, 2);
+	SDL_UnlockMutex(SD_SDL_TimerMutex);
 }
 
 unsigned int SD_SDL_Detect()
@@ -651,6 +776,8 @@ unsigned int SD_SDL_Detect()
 
 void SD_SDL_SetOPL3(bool on)
 {
+	if (SD_SDL_noSound)
+		return;
 	YM3812Write(&oplChip, 0x105, on ? 0x01 : 0x00);
 	// Reset 4-OPs to 2-op.
 	YM3812Write(&oplChip, 0x104, 0x00);

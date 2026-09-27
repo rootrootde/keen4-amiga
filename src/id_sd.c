@@ -43,6 +43,7 @@ bool sd_haveAdlib;
 SD_SoundMode sd_soundMode;
 ID_MusicMode sd_musicMode;
 bool sd_quietAdlibSfx;
+static bool sd_noSound;
 
 // Internal globals
 static bool sd_started = false;
@@ -66,6 +67,9 @@ static int sd_sfxPartRate = 140;
 
 // Kind of same as Wolf3D's TimeCount from ID_SD.C
 static volatile uint32_t sd_timeCount = 0;
+#ifdef CK_ENABLE_PLAYLOOP_DUMPER
+static uint32_t sd_assignedTimeCount = 0;
+#endif
 // Same as Wolf3D's lasttimecount from WL_DRAW.C?
 static volatile int32_t sd_lastTimeCount = 0;
 // Number of sprite "think" ticks.
@@ -83,7 +87,17 @@ void SD_SetTimeCount(uint32_t newval)
 {
 	SD_GetTimeCount(); // Refresh SD_LastPITTickTime to be in sync with SDL_GetTicks()
 	sd_timeCount = newval;
+#ifdef CK_ENABLE_PLAYLOOP_DUMPER
+	sd_assignedTimeCount = newval;
+#endif
 }
+
+#ifdef CK_ENABLE_PLAYLOOP_DUMPER
+uint32_t SD_GetAssignedTimeCount(void)
+{
+	return sd_assignedTimeCount;
+}
+#endif
 
 int32_t SD_GetLastTimeCount()
 {
@@ -394,7 +408,7 @@ typedef CK_PACKED_STRUCT(SD_MusicTrack
 // Reset the Adlib card
 static void SD_AL_Reset()
 {
-	if (!sd_backend)
+	if (!sd_backend || sd_noSound)
 		return;
 	sd_backend->lock();
 	for (int i = 0; i < 255; ++i)
@@ -435,6 +449,8 @@ static void SD_AL_MusicService()
 // Set the current SoundMode (Off/PC/AdLib)
 bool SD_SetSoundMode(SD_SoundMode mode)
 {
+	if (sd_noSound)
+		mode = sdm_Off;
 	bool soundAvailable = false;
 	int16_t sfxChunkOffset = 0;
 	SD_StopSound();
@@ -476,6 +492,8 @@ bool SD_SetSoundMode(SD_SoundMode mode)
 // Set the current MusicMode (Off/AdLib)
 bool SD_SetMusicMode(ID_MusicMode mode)
 {
+	if (sd_noSound)
+		mode = smm_Off;
 	bool musicAvailable = false;
 	SD_MusicOff();
 	// Wait for music to end.
@@ -526,7 +544,7 @@ bool SD_GetQuietSfx()
 // Check to see if an Adlib card (i.e., Adlib backend) is present.
 bool SD_IsAdlibPresent()
 {
-	return true;
+	return !sd_noSound;
 }
 
 // Start the Sound Manager
@@ -556,6 +574,8 @@ void SD_Startup()
 
 	for (int i = 0; i < us_argc; ++i)
 	{
+		if (!CK_Cross_strcasecmp(us_argv[i], "/NOSOUND"))
+			sd_noSound = true;
 #ifdef SD_OPL2_WITH_ALSA
 		if (!CK_Cross_strcasecmp(us_argv[i], "/ALSAOPL2"))
 			sd_backend = SD_Impl_GetBackend_ALSAOPL2();
@@ -574,7 +594,7 @@ void SD_Startup()
 		sd_backend->startup();
 
 	// TODO: Support /NOAL switch
-	sd_haveAdlib = true;
+	sd_haveAdlib = !sd_noSound;
 
 	SD_SetTimeCount(0);
 
@@ -587,6 +607,12 @@ void SD_Startup()
 // Set default Sound/Music modes
 void SD_Default(bool gotit, SD_SoundMode sd, ID_MusicMode sm)
 {
+	if (sd_noSound)
+	{
+		SD_SetSoundMode(sdm_Off);
+		SD_SetMusicMode(smm_Off);
+		return;
+	}
 	// If not specified, Adlib is default.
 	if (!gotit)
 	{
@@ -695,7 +721,7 @@ void SD_WaitSoundDone(void)
 // Start playing the current music track.
 void SD_MusicOn(void)
 {
-	if (!sd_backend)
+	if (!sd_backend || sd_noSound)
 		return;
 	sd_backend->lock();
 	sd_musicStarted = true;
@@ -730,7 +756,7 @@ void SD_StartMusic(SD_MusicTrack *music)
 			return;
 		sd_backend->lock();
 		sd_music_data = music->data;
-		sd_music_trackSize = music->length;
+		sd_music_trackSize = CK_Cross_SwapLE16(music->length);
 		sd_music_currentIndex = 0;
 		sd_music_nextEventTime = 0;
 		sd_music_currentTime = 0;

@@ -882,15 +882,6 @@ void CA_CacheGrChunk(int chunk)
 			spriteTable[i].shifts = CK_Cross_SwapLE16(spriteTable[i].shifts);
 		}
 	}
-	else if (chunk >= CK_CHUNKNUM(FON_MAINFONT) && chunk <= /*FON_WATCHFONT*/ CK_CHUNKNUM(FON_MAINFONT) + 2)
-	{
-		VH_Font *font = (VH_Font *)ca_graphChunks[chunk];
-		font->height = CK_Cross_SwapLE16(font->height);
-		for (int i = 0; i < (int)(sizeof(font->location) / sizeof(*(font->location))); ++i)
-		{
-			font->location[i] = CK_Cross_SwapLE16(font->location[i]);
-		}
-	}
 	else if (chunk >= CK_CHUNKNUM(EXTERN_COMMANDER) && chunk <= CK_CHUNKNUM(EXTERN_KEEN))
 	{
 		introbmptype *intro = (introbmptype *)ca_graphChunks[chunk];
@@ -1397,6 +1388,7 @@ void CA_Shutdown(void)
 
 uint8_t *CA_audio[CA_MAX_AUDIO_CHUNKS];
 
+
 void CA_CacheAudioChunk(int16_t chunk)
 {
 	int32_t pos, compressed, expanded;
@@ -1461,7 +1453,9 @@ void CA_CacheAudioChunk(int16_t chunk)
 
 		//done:
 		if (compressed > BUFFERSIZE)
+		{
 			MM_FreePtr(&bigbuffer);
+		}
 	}
 }
 

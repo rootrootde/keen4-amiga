@@ -104,6 +104,9 @@ SD_Backend *SD_Impl_GetBackend();
 
 uint32_t SD_GetTimeCount(void);
 void SD_SetTimeCount(uint32_t newval);
+#ifdef CK_ENABLE_PLAYLOOP_DUMPER
+uint32_t SD_GetAssignedTimeCount(void);
+#endif
 int32_t SD_GetLastTimeCount(void);
 void SD_SetLastTimeCount(int32_t newval);
 uint16_t SD_GetSpriteSync(void);
