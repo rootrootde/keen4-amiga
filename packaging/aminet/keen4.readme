@@ -45,9 +45,9 @@ See the included README for details.
 
 Testing
 -------
-Gameplay, sound and joystick input have been tested on an A1200 with
-PiStorm32-Lite and CM4. Testing is limited: a full playthrough, hardware
-save/load and long sessions have not been verified.
+Gameplay, sound, joystick input and save/load work on an A1200 with
+PiStorm32-Lite and CM4. A full playthrough and long sessions have not
+been verified.
 
 Credits and source
 ------------------

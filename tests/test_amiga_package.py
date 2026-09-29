@@ -133,7 +133,7 @@ class PackageTests(unittest.TestCase):
         with patch.object(MODULE, "HARDWARE_TESTED_SHA256",
                           hashlib.sha256(self.binary).hexdigest()):
             self.assertEqual(self.create()["hardware_status"],
-                             "gameplay_sound_joystick_verified_a1200_pistorm32lite_cm4")
+                             "gameplay_sound_joystick_saveload_verified_a1200_pistorm32lite_cm4")
 
     def test_unsupported_extension_fails_before_output(self):
         output = self.root / "output" / "hardware.tar"

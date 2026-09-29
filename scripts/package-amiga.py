@@ -184,7 +184,7 @@ def create_package(root, output, lha_command=None):
     manifest = {
         "version": VERSION,
         "kind": "release_candidate",
-        "hardware_status": ("gameplay_sound_joystick_verified_a1200_pistorm32lite_cm4"
+        "hardware_status": ("gameplay_sound_joystick_saveload_verified_a1200_pistorm32lite_cm4"
                             if digest(files["omnispeak"]) == HARDWARE_TESTED_SHA256
                             else "current_binary_not_hardware_verified"),
         "license_review": "corresponding_source_and_relink_verified",
