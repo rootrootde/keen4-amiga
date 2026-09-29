@@ -160,11 +160,13 @@ def stage_run(config, run_id, build_id, executable, interactive,
 
 
 def command_for(config, run_dir, jit, audible=False):
+    cpu = config.get("cpu", "68040")
+    fpu = "0" if cpu == "68020" else "68040"
     options = [
         f"filesystem2=rw,DH0:System:{run_dir / 'system'},0",
         f"filesystem2=rw,DH1:TEST:{run_dir / 'test'},-1",
         f"filesystem2=rw,DH2:RESULT:{run_dir / 'results'},-1",
-        "cpu_type=68040", "cpu_model=68040", "fpu_model=68040",
+        f"cpu_type={cpu}", f"cpu_model={cpu}", f"fpu_model={fpu}",
         "cpu_speed=max", "cpu_compatible=false", "cpu_24bit_addressing=false",
         "cpu_cycle_exact=false", "cpu_memory_cycle_exact=false",
         "blitter_cycle_exact=false",
@@ -183,10 +185,12 @@ def command_for(config, run_dir, jit, audible=False):
     return args + ["-G"]
 
 
-def check_profile(log_text, jit):
-    cpu_lines = re.findall(r"CPU=68040[^\n]*", log_text)
-    if not cpu_lines:
+def check_profile(log_text, jit, cpu="68040"):
+    cpu_lines = re.findall(r"^CPU=\d+[^\n]*", log_text, re.MULTILINE)[:1]
+    if not cpu_lines or not cpu_lines[0].startswith(f"CPU={cpu},"):
         return "missing effective CPU/JIT profile in emulator log"
+    if cpu == "68020" and not re.search(r"FPU=0(?:,|\s)", cpu_lines[-1]):
+        return "68020 profile must have no FPU"
     if jit:
         caches = re.findall(r"actual translation cache size : (\d+) KB", log_text)
         active = re.search(r"JIT=CPU/FPU=(\d+)", cpu_lines[-1])
@@ -489,7 +493,7 @@ def run_once(config, interactive, jit, mode="probe", demo=None,
         "global_ini_sha256": global_ini_hash,
         "args": args, "guest_command": guest_command,
         "environment": {"AMIBERRY_HOME_DIR": env["AMIBERRY_HOME_DIR"]},
-        "jit": jit,
+        "jit": jit, "cpu": config.get("cpu", "68040"),
         "mode": mode, "demo": demo, "variant": variant if mode != "probe" else None,
         "audible": audible, "audio": audio, "cycles": cycles,
         "run_timeout_seconds": run_timeout_seconds if mode == "run" else None,
@@ -525,7 +529,7 @@ def run_once(config, interactive, jit, mode="probe", demo=None,
     log_path = run_dir / "host.stdout"
     try:
         if log_path.is_file():
-            profile_error = check_profile(log_path.read_text(errors="replace"), jit)
+            profile_error = check_profile(log_path.read_text(errors="replace"), jit, config.get("cpu", "68040"))
         else:
             profile_error = "missing emulator stdout log"
     except (OSError, ValueError) as exc:
@@ -709,6 +713,7 @@ def main():
     parser.add_argument("--cycles", type=int, default=20)
     parser.add_argument("--run-timeout-seconds", type=int, default=0)
     parser.add_argument("--jit", action="store_true")
+    parser.add_argument("--cpu", choices=("68040", "68020"), default="68040")
     parser.add_argument("--demo", type=int, choices=range(5), default=0)
     parser.add_argument("--variant", choices=("release", "debug"), default="release")
     parser.add_argument("--audible", action="store_true")
@@ -730,8 +735,13 @@ def main():
         parser.error("--run-timeout-seconds requires run mode and a nonnegative value")
     if (args.both_jit or args.both_audio) and args.mode != "regression":
         parser.error("--both-jit and --both-audio require regression mode")
+    if args.cpu == "68020":
+        if args.jit or args.both_jit or args.mode.startswith("probe"):
+            parser.error("68020 requires a game mode without JIT")
+        args.variant += "-68020"
     try:
         config = load_config(args.config)
+        config["cpu"] = args.cpu
         if args.mode == "validate-data":
             failures = validate_game_data(config["game_data"])
             if failures:

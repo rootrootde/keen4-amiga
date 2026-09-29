@@ -194,6 +194,16 @@ class IpcOwnershipTests(unittest.TestCase):
 
 
 class ProfileTests(unittest.TestCase):
+    def test_68020_without_fpu(self):
+        log = "JIT: cache=0.\nCPU=68020, FPU=0, MMU=0, JIT=0. fast\n"
+        self.assertIsNone(MODULE.check_profile(log, False, "68020"))
+        self.assertIn("no FPU", MODULE.check_profile(log.replace("FPU=0", "FPU=68881"), False, "68020"))
+
+    def test_shutdown_cpu_cannot_hide_wrong_startup_cpu(self):
+        log = ("JIT: cache=0.\nCPU=68040, FPU=68040, JIT=0. fast\n"
+               "CPU=68020, FPU=0, MMU=0, JIT=0.\n")
+        self.assertIsNotNone(MODULE.check_profile(log, False, "68020"))
+
     def test_enabled_profile(self):
         log = ("JIT: <JIT compiler> : actual translation cache size : 8192 KB\n"
                "CPU=68040, FPU=68040, JIT=CPU/FPU=8192. fast\n")
