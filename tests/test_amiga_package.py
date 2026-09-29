@@ -202,7 +202,8 @@ class PackageTests(unittest.TestCase):
 
     def test_install_icon(self):
         self.check_icon(ICON, "C:Installer", 65536,
-                        ("MINUSER=AVERAGE", "DEFUSER=AVERAGE", "APPNAME=Keen4"), 40)
+                        ("MINUSER=AVERAGE", "DEFUSER=AVERAGE", "APPNAME=Keen4"), 56,
+                        glow=True)
 
     def test_game_icon(self):
         self.check_icon(GAME_ICON, "C:IconX", 262144,

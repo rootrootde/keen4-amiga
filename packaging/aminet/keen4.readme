@@ -51,7 +51,7 @@ Installer
 Requires Installer 43.3+, UnZip and IconX on the Amiga, plus about
 700 kB free in T:
 
-Installer: util/misc/.lha
+Installer: util/misc/Installer-43_3.lha
 UnZip:     util/arc/UnZIP552.lha
 
 1. Extract keen4.lha

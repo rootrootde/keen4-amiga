@@ -6,7 +6,7 @@ import zlib
 
 
 WIDTH = 64
-INSTALL_HEIGHT = 40
+INSTALL_HEIGHT = 56
 GAME_HEIGHT = 56
 GAME_NUMBER = (
     "   ##  ",
@@ -123,81 +123,24 @@ def add_game_number(pixels, foreground, outline):
         pixels[y][x] = foreground
 
 
+def add_install_badge(pixels, outline, background, arrow):
+    for y in range(38, 55):
+        for x in range(46, 64):
+            pixels[y][x] = outline if x in (46, 63) or y in (38, 54) else background
+    for y in range(40, 47):
+        for x in range(53, 57):
+            pixels[y][x] = arrow
+    for y in range(46, 52):
+        for x in range(49 + y - 46, 61 - (y - 46)):
+            pixels[y][x] = arrow
+
+
 def icon_pixels(install=False):
-    if not install:
-        colors = {" ": 0, "#": 1, ".": 2, "+": 3}
-        pixels = [[colors[pixel] for pixel in row] for row in GAME_ROWS]
-        add_game_number(pixels, 2, 1)
-        return pixels
-
-    pixels = [[0 for _ in range(WIDTH)] for _ in range(INSTALL_HEIGHT)]
-
-    def rect(x0, y0, x1, y1, color):
-        for y in range(y0, y1):
-            for x in range(x0, x1):
-                pixels[y][x] = color
-
-    shell = ((18, 29), (15, 33), (13, 36), (11, 38), (10, 40),
-             (9, 41), (8, 42), (7, 43), (7, 43), (6, 44),
-             (6, 44), (6, 43), (7, 43), (8, 42), (9, 41),
-             (10, 39), (12, 37), (14, 34), (16, 31))
-    for y, (left, right) in enumerate(shell, 2):
-        rect(left, y, right, y + 1, 1)
-        if y > 3:
-            rect(left + 2, y, right - 2, y + 1, 3)
-
-    rect(22, 3, 26, 8, 2)
-    rect(23, 8, 27, 17, 2)
-    rect(24, 17, 28, 20, 2)
-    rect(7, 15, 12, 20, 1)
-    rect(8, 16, 12, 18, 2)
-
-    face = ((32, 42), (30, 44), (29, 45), (28, 47),
-            (28, 49), (28, 49), (28, 46), (28, 44),
-            (29, 43), (30, 42), (31, 41), (32, 40))
-    for y, (left, right) in enumerate(face, 18):
-        rect(left, y, right, y + 1, 1)
-        rect(left + 1, y, right - 1, y + 1, 2)
-    rect(40, 20, 43, 23, 1)
-    rect(43, 25, 47, 26, 1)
-    rect(32, 18, 36, 20, 1)
-
-    rect(10, 17, 24, 29, 1)
-    rect(12, 19, 22, 27, 3)
-    rect(15, 21, 20, 25, 2)
-    rect(19, 27, 23, 34, 1)
-    rect(21, 29, 32, 32, 1)
-    rect(30, 29, 36, 36, 1)
-    rect(31, 30, 34, 35, 2)
-    rect(17, 33, 38, 40, 1)
-    rect(15, 35, 40, 40, 1)
-    rect(18, 35, 37, 40, 3)
-    rect(29, 34, 37, 38, 2)
-    rect(30, 34, 35, 35, 1)
-
-    rect(57, 4, 63, 27 if install else 36, 1)
-    rect(54, 10, 59, 15, 1)
-    rect(52, 15, 57, 20, 1)
-    rect(50, 20, 55, 26, 1)
-    rect(50, 24, 63, 29, 1)
-    rect(59, 5, 61, 23, 3)
-    rect(55, 12, 57, 15, 3)
-    rect(53, 17, 55, 20, 3)
-    rect(51, 22, 53, 24, 3)
-    rect(52, 25, 61, 27, 3)
-    if not install:
-        rect(59, 29, 61, 34, 3)
-
+    colors = {" ": 0, "#": 1, ".": 2, "+": 3}
+    pixels = [[colors[pixel] for pixel in row] for row in GAME_ROWS]
+    add_game_number(pixels, 2, 1)
     if install:
-        rect(49, 29, 64, 40, 1)
-        rect(50, 30, 63, 39, 2)
-        rect(55, 30, 58, 33, 3)
-        rect(51, 33, 62, 34, 3)
-        rect(52, 34, 61, 35, 3)
-        rect(53, 35, 60, 36, 3)
-        rect(54, 36, 59, 37, 3)
-        rect(55, 37, 58, 38, 3)
-        rect(56, 38, 57, 39, 3)
+        add_install_badge(pixels, 1, 2, 3)
     return pixels
 
 
@@ -230,12 +173,14 @@ def glow_image(pixels, palette):
     return iff_chunk(b"IMAG", header + pixels + palette_data)
 
 
-def glow_icon():
+def glow_icon(install=False):
     decoded = zlib.decompress(base64.b85decode(GLOW_PIXELS))
     assert len(decoded) == WIDTH * GAME_HEIGHT
     rows = [list(decoded[y * WIDTH:(y + 1) * WIDTH])
             for y in range(GAME_HEIGHT)]
     add_game_number(rows, 2, 1)
+    if install:
+        add_install_badge(rows, 1, 6, 14)
     normal = bytes(pixel for row in rows for pixel in row)
     selected = bytearray(normal)
     selected_palette = GLOW_PALETTE + ((255, 184, 0), (255, 240, 96))
@@ -285,8 +230,7 @@ def create_icon(install=False):
     data += text_field(default_tool)
     data += (struct.pack(">I", 4 * (len(tooltypes) + 1)) +
              b"".join(text_field(value) for value in tooltypes))
-    if not install:
-        data += glow_icon()
+    data += glow_icon(install)
     return data
 
 
