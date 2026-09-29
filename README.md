@@ -7,11 +7,12 @@ Commander Keen 4 v1.4 EGA for AmigaOS 68k
 0.1.0: gameplay, sound, joystick and save/load work on an A1200 with PiStorm32-Lite and CM4. No full playthrough yet tho
 
 Reports and feedback welcome, please include your hardware and any problems you encounter
+You can join the (Emu68 Hatcher Discord)[https://discord.com/invite/ApTbasXJPE] for that :)
 
 ## Required game files
 
 > [!IMPORTANT]
-> **Game data is not included in the Amiga package.** Download the [Commander Keen 4 v1.4 EGA shareware archive (4keen14.zip)](https://davidgow.net/keen/4keen14.zip) separately. This build requires that version; the GT software version is NOT compatible.
+> **Game data is not included in the Amiga package.** Download the [Commander Keen 4 v1.4 EGA shareware archive (4keen14.zip)](https://davidgow.net/keen/4keen14.zip) separately. This build requires that version; the GT software version is NOT compatible
 
 Only these three files are needed from the ZIP:
 
