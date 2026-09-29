@@ -29,3 +29,7 @@ validate-data:
 
 package-amiga:
 	python3 scripts/package-amiga.py $(ARGS)
+
+.PHONY: build-68020
+build-68020:
+	./scripts/build-amiga.sh 68020

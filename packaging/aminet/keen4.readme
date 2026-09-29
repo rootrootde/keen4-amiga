@@ -1,0 +1,64 @@
+Short:        Rescue the council in a platform game
+Author:       Omnispeak authors; Amiga port by Christopher Reemts
+Uploader:     mail@rootroot.de (Christopher Reemts)
+Type:         game/jump
+Version:      0.1.0
+Architecture: m68k-amigaos
+Requires:     68040/FPU, RTG, AHI, Keen 4 v1.4 EGA data
+
+Keen 4 for AmigaOS 68k, based on Omnispeak.
+Needs an accelerator, 68040/FPU and 256-color RTG output.
+Tested on PiStorm/Emu68. Other accelerators are untested.
+No OCS or AGA output. Further work depends on interest and feedback.
+
+Game data is not included. Get the v1.4 EGA shareware archive here:
+https://davidgow.net/keen/4keen14.zip
+GT retail data is not compatible.
+
+Installation
+------------
+Extract the LHA archive into a writable drawer.
+
+Installer: requires Installer 43.3+, UnZip, IconX and about 700 KiB
+free in T:. Start Install, choose Intermediate User, select the parent
+drawer for Keen4, then select 4keen14.zip. Existing saves and settings
+are preserved. Installer 44.10 stalled in Expert mode.
+Installer: util/misc/Installer-43_3 on Aminet.
+
+Manual: extract AUDIO.CK4, EGAGRAPH.CK4 and GAMEMAPS.CK4 from the ZIP
+beside omnispeak. Keep the other files from the LHA archive together.
+Start with Execute Start-Keen4 in a Shell, or double-click Start-Keen4
+if IconX is installed. Start-Keen4-NoSound disables audio.
+
+Controls and sound
+------------------
+Arrow keys move, Ctrl jumps, Alt uses the pogo stick, Space fires.
+Enter shows status. F5 quick-saves, F9 quick-loads.
+Controls can be changed under Main Menu > Configure.
+
+For a two-button joystick, enable Two-Button Firing in Configure >
+Options. Button 0 jumps, button 1 uses the pogo; both buttons fire.
+
+Sound uses AHI Unit 0. The default stream is 22050 Hz, 16-bit mono.
+Sample rate, channel count and buffer size can be set in OMNISPK.CFG.
+See the included README for details.
+
+Testing
+-------
+Gameplay, sound and joystick input have been tested on an A1200 with
+PiStorm32-Lite and CM4. Testing is limited: a full playthrough, hardware
+save/load and long sessions have not been verified.
+
+Credits and source
+------------------
+Based on Omnispeak: https://github.com/sulix/omnispeak
+Authors and license terms are in AUTHORS and LICENSE. Engine and SDL
+source are included in the source drawer; third-party notices are in
+licenses and the source tree. Game data must be supplied separately.
+
+Project: https://github.com/rootrootde/keen4-amiga
+
+Changes in 0.1.0
+---------------
+First Amiga RTG release, with AHI sound, keyboard and joystick input,
+and an Amiga Installer script.

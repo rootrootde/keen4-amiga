@@ -14,6 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "0.1.0"
+HARDWARE_TESTED_SHA256 = "4588697409bcfc67daaa886b1e39269ba48c6b533a5711e03864a10cd6bf945c"
 ARCHIVE_ROOT = "keen4-amiga"
 SUPPORT_FILES = (
     "ACTION.CK4", "AUDINFOE.CK4", "AUDIODCT.CK4", "AUDIOHHD.CK4",
@@ -83,7 +84,7 @@ def package_payload(root):
         "build.json": read_file(root, "build/amiga/build.json"),
         "LICENSE": read_file(root, "LICENSE"),
         "AUTHORS": read_file(root, "AUTHORS"),
-        "README": read_file(root, "README"),
+        "README": read_file(root, "README.md"),
         "upstream/README": read_file(root, "upstream/README"),
         "licenses/LGPL-2.1.txt": read_file(root, "src/opl/NUKEDOPL3-LICENSE"),
         "licenses/SDL-README.txt": read_file(root, "licenses/SDL-README.txt"),
@@ -183,7 +184,9 @@ def create_package(root, output, lha_command=None):
     manifest = {
         "version": VERSION,
         "kind": "release_candidate",
-        "hardware_status": "older_binary_playable_current_binary_input_pending",
+        "hardware_status": ("gameplay_sound_joystick_verified_a1200_pistorm32lite_cm4"
+                            if digest(files["omnispeak"]) == HARDWARE_TESTED_SHA256
+                            else "current_binary_not_hardware_verified"),
         "license_review": "corresponding_source_and_relink_verified",
         "publication_status": "not_published",
         "files": {name: {"sha256": digest(data), "bytes": len(data)}

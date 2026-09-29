@@ -2,11 +2,17 @@
 set -eu
 
 cd "$(dirname "$0")/.."
+cpu=${1:-68040}
+case "$cpu" in
+  68040) float_flag=-mhard-float; suffix= ;;
+  68020) float_flag=-msoft-float; suffix=-68020 ;;
+  *) printf 'unsupported CPU: %s\n' "$cpu" >&2; exit 1 ;;
+esac
 image=sha256:369734d6aa2aa3650487b2b2b529fdadd2a6ecf0618947677165c676bbc996de
 compiler_sha256=a419431077b167d69c9be40ed6d2adf8ff77f77ce721fff6c9658c21420db7b0
 sdl_sha256=0e5af159ddb3d7d8a39636fbab2818dd1e94d9746e85a33b1d682d81780feed9
 sdl_header_sha256=7dcd342424ce3f57bb9b55ffe110fc1184b4c9a9cade82117afbfd571f71ed92
-sysflags='-m68040 -mhard-float -noixemul -I/opt/m68k-amigaos/usr/include/SDL -DKEEN_AMIGA_RTG=1 -DCK_ENABLE_PLAYLOOP_DUMPER=1 -DFS_NO_OMNI_EXEDIR_FALLBACK=1 -DFS_NO_USER_XDG_FALLBACK=1'
+sysflags="-m$cpu $float_flag -noixemul -I/opt/m68k-amigaos/usr/include/SDL -DKEEN_AMIGA_RTG=1 -DCK_ENABLE_PLAYLOOP_DUMPER=1 -DFS_NO_OMNI_EXEDIR_FALLBACK=1 -DFS_NO_USER_XDG_FALLBACK=1"
 sdl_cflags=-DWITH_SDL
 sdl_libs='-L/opt/m68k-amigaos/usr/lib -lSDL'
 
@@ -16,6 +22,12 @@ version_output=$(docker run --rm --platform linux/arm64 "$image" sh -ec '
   test "$(sha256sum /opt/m68k-amigaos/usr/include/SDL/SDL.h | cut -d" " -f1)" = "7dcd342424ce3f57bb9b55ffe110fc1184b4c9a9cade82117afbfd571f71ed92"
   /opt/m68k-amigaos/bin/m68k-amigaos-gcc --version
 ')
+if [ "$cpu" = 68020 ]; then
+  ./scripts/build-sdl.sh 68020
+  sdl_libs=/work/build/sdl-source-68020/build/libSDL.a
+  sdl_sha256=$(shasum -a 256 build/sdl-source-68020/build/libSDL.a | cut -d' ' -f1)
+fi
+export cpu float_flag suffix
 compiler_version=$(printf '%s\n' "$version_output" | sed -n '1p')
 export compiler_version compiler_sha256 sdl_sha256 sdl_header_sha256 sysflags sdl_cflags sdl_libs
 
@@ -31,8 +43,8 @@ for variant in release debug; do
     make -C src -B -j2 all PLATFORM=amiga RENDERER=sdl1 BUILDASCPP=0 \
     WITH_KEEN4=1 WITH_KEEN5=0 WITH_KEEN6=0 DEBUG="$debug" \
     COMPILER=/opt/m68k-amigaos/bin/m68k-amigaos-gcc \
-    BINDIR="../build/amiga/$variant" \
-    OBJDIR="../build/amiga/$variant/obj" \
+    BINDIR="../build/amiga/$variant$suffix" \
+    OBJDIR="../build/amiga/$variant$suffix/obj" \
     SYSFLAGS="$sysflags" \
     SDL_CFLAGS="$sdl_cflags" \
     SDL_LIBS="$sdl_libs"
@@ -47,6 +59,8 @@ import subprocess
 
 root = Path('build/amiga')
 source_paths = [Path('Makefile'), Path('scripts/build-amiga.sh')]
+if os.environ['cpu'] == '68020':
+    source_paths += [Path('scripts/build-sdl.sh'), Path('third_party/SDL-1.2.16-source.tar.gz')]
 source_paths.extend(sorted(path for path in Path('src').rglob('*')
                            if path.is_file() and not path.is_symlink() and
                            (path.suffix.lower() in ('.c', '.h', '.cpp', '.hpp', '.s', '.rc', '.frag', '.vert')
@@ -76,7 +90,7 @@ details = {
         'release': {'compile': ['-std=gnu99', '-O2', '-DWITH_KEEN4'], 'link': []},
         'debug': {'compile': ['-std=gnu99', '-g', '-O0', '-DCK_DEBUG', '-DWITH_KEEN4'], 'link': ['-g']},
     },
-    'cpu_flags': ['-m68040', '-mhard-float', '-noixemul'],
+    'cpu_flags': ['-m' + os.environ['cpu'], os.environ['float_flag'], '-noixemul'],
     'compile_defines': [
         'KEEN_AMIGA_RTG=1', 'CK_ENABLE_PLAYLOOP_DUMPER=1',
         'FS_NO_OMNI_EXEDIR_FALLBACK=1', 'FS_NO_USER_XDG_FALLBACK=1',
@@ -92,11 +106,11 @@ diff = subprocess.run(['git', 'diff', '--binary', '--', 'src'],
                       capture_output=True, check=True).stdout
 details['source_diff_sha256'] = hashlib.sha256(diff).hexdigest()
 for variant in ('release', 'debug'):
-    path = root / variant / 'omnispeak'
+    path = root / (variant + os.environ['suffix']) / 'omnispeak'
     details['variants'][variant] = {
         'path': str(path),
         'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
         'bytes': path.stat().st_size,
     }
-(root / 'build.json').write_text(json.dumps(details, indent=2) + '\n')
+(root / ('build' + os.environ['suffix'] + '.json')).write_text(json.dumps(details, indent=2) + '\n')
 PY

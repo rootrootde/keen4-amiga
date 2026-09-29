@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 
@@ -27,7 +28,7 @@ class PackageTests(unittest.TestCase):
         self.output = self.root / "output" / "hardware.zip"
         self.binary = b"amiga binary"
         self.write("build/amiga/release/omnispeak", self.binary)
-        for path in ("LICENSE", "AUTHORS", "README", "upstream/README", "Makefile",
+        for path in ("LICENSE", "AUTHORS", "README.md", "upstream/README", "Makefile",
                      "licenses/SDL-README.txt",
                      "third_party/SDL-1.2.16-source.tar.gz",
                      "scripts/build-sdl.sh", "scripts/relink-amiga.sh",
@@ -78,7 +79,7 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(archive.read(prefix + "source/src/example.c"),
                              b"src/example.c")
             self.assertIn(prefix + "source/scripts/build-amiga.sh", names)
-            self.assertEqual(archive.read(prefix + "README"), b"README")
+            self.assertEqual(archive.read(prefix + "README"), b"README.md")
             self.assertEqual(archive.read(prefix + "upstream/README"), b"upstream/README")
             self.assertIn(prefix + "licenses/SDL-README.txt", names)
             self.assertIn(prefix + "source/third_party/SDL-1.2.16-source.tar.gz", names)
@@ -126,24 +127,33 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(data).hexdigest(), record["sha256"])
             self.assertFalse((extracted / MODULE.ARCHIVE_ROOT / "AUDIO.CK4").exists())
 
+    def test_hardware_status_requires_tested_binary_hash(self):
+        self.assertEqual(self.create()["hardware_status"],
+                         "current_binary_not_hardware_verified")
+        with patch.object(MODULE, "HARDWARE_TESTED_SHA256",
+                          hashlib.sha256(self.binary).hexdigest()):
+            self.assertEqual(self.create()["hardware_status"],
+                             "gameplay_sound_joystick_verified_a1200_pistorm32lite_cm4")
+
     def test_unsupported_extension_fails_before_output(self):
         output = self.root / "output" / "hardware.tar"
         with self.assertRaisesRegex(ValueError, r"\.lha or \.zip"):
             MODULE.create_package(self.root, output)
         self.assertFalse(output.exists())
 
-    def check_icon(self, path, default_tool, stack, tooltypes):
+    def check_icon(self, path, default_tool, stack, tooltypes, height,
+                   glow=False):
         import struct
 
         data = path.read_bytes()
         self.assertEqual(struct.unpack_from(">HH", data, 0), (0xE310, 1))
         self.assertEqual(data[48], 4)
-        self.assertEqual(struct.unpack_from(">hh", data, 12), (64, 40))
+        self.assertEqual(struct.unpack_from(">hh", data, 12), (64, height))
         self.assertEqual(struct.unpack_from(">ii", data, 58),
                          (-2147483648, -2147483648))
         self.assertEqual(struct.unpack_from(">I", data, 74)[0], stack)
-        self.assertEqual(struct.unpack_from(">hhh", data, 82), (64, 40, 2))
-        offset = 78 + 20 + 64 // 8 * 40 * 2
+        self.assertEqual(struct.unpack_from(">hhh", data, 82), (64, height, 2))
+        offset = 78 + 20 + 64 // 8 * height * 2
         fields = []
         for _ in range(1):
             length = struct.unpack_from(">I", data, offset)[0]
@@ -159,15 +169,45 @@ class PackageTests(unittest.TestCase):
             offset += 4
             self.assertEqual(data[offset:offset + length], expected.encode() + b"\0")
             offset += length
-        self.assertEqual(offset, len(data))
+        if glow:
+            self.assertEqual(data[offset:offset + 4], b"FORM")
+            form_size = struct.unpack_from(">I", data, offset + 4)[0]
+            self.assertEqual(data[offset + 8:offset + 12], b"ICON")
+            form = data[offset + 12:offset + 8 + form_size]
+            chunks = []
+            chunk_offset = 0
+            while chunk_offset < len(form):
+                name = form[chunk_offset:chunk_offset + 4]
+                size = struct.unpack_from(">I", form, chunk_offset + 4)[0]
+                payload = form[chunk_offset + 8:chunk_offset + 8 + size]
+                chunks.append((name, payload))
+                chunk_offset += 8 + size + (size & 1)
+            self.assertEqual(chunk_offset, len(form))
+            self.assertEqual([name for name, _ in chunks],
+                             [b"FACE", b"IMAG", b"IMAG"])
+            self.assertEqual(struct.unpack(">BBBBH", chunks[0][1]),
+                             (63, 55, 0, 0, 92))
+            for (_, payload), colors in zip(chunks[1:], (29, 31)):
+                transparent, color_max, flags, image_format, palette_format, depth, \
+                    image_size, palette_size = struct.unpack_from(">BBBBBBHH", payload)
+                self.assertEqual((transparent, color_max, flags, image_format,
+                                  palette_format, depth),
+                                 (0, colors - 1, 3, 0, 0, 5))
+                self.assertEqual(image_size + 1, 64 * 56)
+                self.assertEqual(palette_size + 1, colors * 3)
+                self.assertEqual(len(payload), 10 + 64 * 56 + colors * 3)
+            self.assertEqual(offset + 8 + form_size, len(data))
+        else:
+            self.assertEqual(offset, len(data))
 
     def test_install_icon(self):
         self.check_icon(ICON, "C:Installer", 65536,
-                        ("MINUSER=AVERAGE", "DEFUSER=AVERAGE", "APPNAME=Keen4"))
+                        ("MINUSER=AVERAGE", "DEFUSER=AVERAGE", "APPNAME=Keen4"), 40)
 
     def test_game_icon(self):
         self.check_icon(GAME_ICON, "C:IconX", 262144,
-                        ("WINDOW=CON:0/0/640/100/Keen4/AUTO/CLOSE",))
+                        ("WINDOW=CON:0/0/640/100/Keen4/AUTO/CLOSE",), 56,
+                        glow=True)
 
     def test_missing_input_fails_without_archive(self):
         (self.root / "data/keen4/ACTION.CK4").unlink()

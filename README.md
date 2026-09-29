@@ -1,27 +1,80 @@
 # Keen 4 for AmigaOS 68k
 
-Version 0.1.0 runs Commander Keen 4 on AmigaOS with a PiStorm/Emu68 setup. It uses a 68040 with FPU, a 256-color RTG display (such as Picasso96), and AHI Unit 0 for sound. This is an RTG port; OCS and AGA screen modes are not supported. The engine is based on [Omnispeak](https://github.com/sulix/omnispeak). This build supports Keen 4 v1.4 EGA only.
+Commander Keen 4 v1.4 EGA for AmigaOS 68k
+
+Build only for **68040/FPU, RTG and AHI**. Tested on Pistorm, other accelerators **may** work.
+
+0.1.0: gameplay, sound and joystick work on an A1200 with PiStorm32-Lite and CM4. No full playthrough yet tho
+
+Reports and feedback welcome, please include your hardware and any problems you encounter
+
+## Required game files
+
+> [!IMPORTANT]
+> **Game data is not included in the Amiga package.** Download the [Commander Keen 4 v1.4 EGA shareware archive (4keen14.zip)](https://davidgow.net/keen/4keen14.zip) separately. This build requires that version; the GT software version is NOT compatible.
+
+Only these three files are needed from the ZIP:
+
+| File | Size in bytes |
+| --- | ---: |
+| AUDIO.CK4 | 33,325 |
+| EGAGRAPH.CK4 | 520,581 |
+| GAMEMAPS.CK4 | 99,040 |
+
+With the installer, select the 4keen14.zip as downloaded. It extracts these files and checks their sizes. For a manual installation you can extract them yourself and copy them into  the game drawer, beside **omnispeak**. The other support files are already included in the Amiga package.
 
 ## Install
 
-You need Installer 43.3 or newer, UnZip, IconX, and a writable drawer. Keep about 700 KiB free in T: for extraction. Get the Keen 4 v1.4 EGA shareware archive [4keen14.zip](https://davidgow.net/keen/4keen14.zip) separately; game data is not in this package.
+Choose either method below
 
-1. Extract **keen4-0.1.0.lha** into a drawer on your Amiga.
-2. Double-click **Install** and choose **Intermediate User**. Select the parent drawer where **Keen4** should be created, then select **4keen14.zip**. The installer finds **UnZip** in C:, SYS:Utilities or SYS:System, or asks where it is.
-3. Open the installed **Keen4** drawer and double-click **Start-Keen4**. The launcher uses IconX and sets the required stack size. The drawer receives your system's default drawer icon.
+### Installer
 
-The installer extracts only **AUDIO.CK4**, **EGAGRAPH.CK4**, and **GAMEMAPS.CK4** from the ZIP, checks their sizes, and leaves the ZIP untouched. If installing by hand, copy those three files beside **omnispeak** along with the package's Keen 4 support files. The expected sizes are 33,325, 520,581, and 99,040 bytes respectively. GT retail files are incompatible. From a Shell in the game drawer, run **Execute Start-Keen4**. **Execute Start-Keen4-NoSound** starts without audio.
+Requires [Installer 43.3+](https://aminet.net/package/util/misc/Installer-43_3), Unzip and IconX on the Amiga, plus about 700 kB free in T:
 
-If an interrupted install leaves **T:Keen4InstallData**, inspect and remove that temporary drawer before retrying. Existing saves and **OMNISPK.CFG** in the destination are preserved by the installer.
+1. Extract **keen4-0.1.0.lha**
+2. Doubleblick **Install** and choose **Intermediate User**. Select a parent drawer; the installer creates **Keen4** inside it.
+3. Select the downloaded **4keen14.zip**, without extracting it first. Unzip is detected automatically, or you will be asked for its location
+4. Open **Keen4** and double-click **Start-Keen4**.
 
-## Play and settings
+### Manual
 
-Arrow keys move. Ctrl jumps, Alt uses the pogo stick, and Space fires. Enter opens the status screen. F5 quick-saves and F9 quick-loads; these bindings can be changed in the game's keyboard settings. Joystick buttons and directions are supported by the SDL input code, but the latest direction fix still needs a physical hardware retest.
+Requires tools to extract LHA and ZIP archives, either on the Amiga or another computer. Installer is not needed. IconX is only needed to start the game by doubleclicking its icon
 
-The game writes saves and **OMNISPK.CFG** to the current game drawer by default. Keep that drawer writable. The **/USERPATH** option selects another save and config drawer; **/GAMEPATH** selects another game-data drawer. The default audio stream is 22050 Hz, signed 16-bit mono, with 512 samples per SDL block. AHI Unit 0 and the final output mode depend on your AHI settings. **OMNISPK.CFG** can set sampleRate, audioChannels and audioBufferSamples.
+1. Extract **keen4-0.1.0.lha** into a writable drawer on your Amiga, or extract it elsewhere and copy the drawer over. Keep the program and its support files together.
+2. Extract **AUDIO.CK4**, **EGAGRAPH.CK4** and **GAMEMAPS.CK4** from **4keen14.zip** and copy them beside **omnispeak**.
+3. Double-click **Start-Keen4**, or open a Shell in the game drawer and run **Execute Start-Keen4**. Use **Execute Start-Keen4-NoSound** to start without audio.
 
-## Scope and credits
+## Controls
 
-An earlier build started and played with sound on an A1200 with PiStorm32-Lite and CM4. The current binary includes a joystick-axis fix that has not yet been retested on that hardware. Complete level play, physical save/load, and long-session stability have not been confirmed. Installer 44.10 worked in Intermediate mode; its Expert mode stalled. Use Intermediate mode.
+| Action     | Keyboard   | Joystick |
+| ---------- | ---------- | -------- |
+| Move       | Arrow keys | Joystick |
+| Jump       | Ctrl       | Button 0 |
+| Pogo       | Alt        | Button 1 |
+| Fire       | Space      | Button 2 |
+| Menu       | Esc        | Button 3 |
+| Status     | Enter      | Button 4 |
+| Quick-save | F5         | Button 5 |
+| Quick-load | F9         | Button 6 |
 
-Omnispeak's authors and license are in **AUTHORS** and **LICENSE**. The original upstream README is in **upstream/README**; its other episode and platform instructions do not describe this Amiga build. The release archive contains the engine source and SDL source in its **source** drawer; the installer does not copy that drawer to the game installation. Keen 4 game files are supplied separately by the player. Release and build evidence is recorded in the source repository under docs/.
+For two-button firing, open Main Menu > Configure > Options and set **Two-Button Firing** to **ON**.
+
+Joysticks and gamepads with more than two buttons have not been tested.
+
+## Sound settings
+
+Sound uses **AHI Unit 0** by default, at 22050 Hz in mono. Audio settings can be changed in **OMNISPK.CFG**:
+
+```ini
+sampleRate = 22050 # sample rate in Hz
+audioChannels = 1 # no. of channels (1 = mono  2 = stereo)
+audioBufferSamples = 512 # buffer size
+```
+
+The buffer size is measured in samples. A larger buffer may reduce audio dropouts but increases latency.
+
+## Credits
+
+Based on [Omnispeak](https://github.com/sulix/omnispeak). See **AUTHORS** and **LICENSE** for credits and licensing, and **upstream/README** for original documentation.
+
+The release archive includes engine and SDL source in **source/**.

@@ -241,8 +241,12 @@ installer asks Installer to write the system's default drawer icon and
 replaces only the icon shipped in the earlier package. Other drawer icons
 are left in place. In **run-c72e7317**, the earlier package icon was replaced
 by the configured default, while a positioned custom icon stayed unchanged
-on reinstall. Both new tool icons loaded through the Amiga icon library as
-64x40, two-plane icons with the intended default tools and stack sizes.
+on reinstall. That run loaded both 64x40, two-plane tool icons through the
+Amiga icon library with the intended default tools and stack sizes. The
+current **Start-Keen4** icon is 64x56 pixels. It adds normal and selected
+GlowIcon images with embedded palettes while keeping the two-plane fallback.
+The GlowIcon data has host-side format, rendering and package coverage; it
+has not been checked on the guest.
 
 With Installer 43.3 and UnZip 5.52, scripted responses produced three game
 files matching the selected ZIP by SHA-256, while saves and configuration
