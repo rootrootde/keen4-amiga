@@ -4,7 +4,7 @@ Commander Keen 4 v1.4 EGA for AmigaOS 68k
 > [!NOTE]
 > currently built only for **68040/FPU, RTG and AHI**. Tested on Pistorm, other accelerators **may** work.
 
-0.1.0: gameplay, sound, joystick and save/load work on an A1200 with PiStorm32-Lite and CM4. No full playthrough yet tho
+0.1.0: gameplay, sound, joystick and save/load work on an A1200 with PiStorm32-Lite and CM4.
 
 Reports and feedback welcome, please include your hardware and any problems you encounter
 
